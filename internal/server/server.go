@@ -46,6 +46,10 @@ const (
 	swaggerDocsAssetPath  = "./docs/"
 )
 
+var (
+	Serv *Server
+)
+
 type Server struct {
 	Version string
 	cfg     *config.Config
@@ -55,7 +59,7 @@ type Server struct {
 	cache *redis.Client
 
 	validator  *validator.Validate
-	router     *chi.Mux
+	rootRouter *chi.Mux
 	httpServer *http.Server
 
 	Domain
@@ -65,8 +69,8 @@ type Options func(opts *Server) error
 
 func defaultServer() *Server {
 	return &Server{
-		cfg:    config.New(),
-		router: chi.NewRouter(),
+		cfg:        config.New(),
+		rootRouter: chi.NewRouter(),
 	}
 }
 
@@ -126,23 +130,23 @@ func (s *Server) newValidator() {
 }
 
 func (s *Server) newRouter() {
-	s.router = chi.NewRouter()
+	s.rootRouter = chi.NewRouter()
 }
 
 func (s *Server) setGlobalMiddleware() {
-	s.router.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	s.rootRouter.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"error": "endpoint not found"}`))
 	})
-	s.router.Use(middleware.Json)
-	s.router.Use(middleware.AuthN())
-	s.router.Use(middleware.Audit)
-	s.router.Use(middleware.CORS)
+	s.rootRouter.Use(middleware.Json)
+	s.rootRouter.Use(middleware.AuthN())
+	s.rootRouter.Use(middleware.Audit)
+	s.rootRouter.Use(middleware.CORS)
 	if s.cfg.Api.RequestLog {
-		s.router.Use(chiMiddleware.Logger)
+		s.rootRouter.Use(chiMiddleware.Logger)
 	}
-	s.router.Use(middleware.Recovery)
+	s.rootRouter.Use(middleware.Recovery)
 }
 
 func (s *Server) Migrate() {
@@ -184,7 +188,7 @@ func (s *Server) Migrate() {
 func (s *Server) Run() {
 	s.httpServer = &http.Server{
 		Addr:    s.cfg.Api.Host + ":" + s.cfg.Api.Port,
-		Handler: s.router,
+		Handler: s.rootRouter,
 	}
 
 	fmt.Println(`            .,*/(#####(/*,.                               .,*((###(/*.
@@ -218,8 +222,8 @@ func (s *Server) Cache() *redis.Client {
 	return s.cache
 }
 
-// PrintAllRegisteredRoutes prints all registered routes from Chi router.
-// definitely can be an extension to the router instead.
+// PrintAllRegisteredRoutes prints all registered routes from Chi rootRouter.
+// definitely can be an extension to the rootRouter instead.
 func (s *Server) PrintAllRegisteredRoutes(exceptions ...string) {
 	exceptions = append(exceptions, "/swagger")
 
@@ -248,7 +252,7 @@ func (s *Server) PrintAllRegisteredRoutes(exceptions ...string) {
 
 		return nil
 	}
-	if err := chi.Walk(s.router, walkFunc); err != nil {
+	if err := chi.Walk(s.rootRouter, walkFunc); err != nil {
 		fmt.Print(err)
 	}
 

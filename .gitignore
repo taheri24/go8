@@ -5,3 +5,5 @@ vendor
 .env
 sqlboiler.toml
 tmp
+docs
+ent/gen
